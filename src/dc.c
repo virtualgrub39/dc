@@ -5,21 +5,8 @@
 
 #include <gmp.h>
 
+#include "dc.h"
 #include "lexer.h"
-
-typedef struct
-{
-    enum
-    {
-        CELL_NUM,
-        CELL_STR,
-    } type;
-    union
-    {
-        dc_num_t num;
-        char *str;
-    } as;
-} cell;
 
 cell
 cell_strv (dc_strv_t strv)
@@ -50,7 +37,7 @@ cell_number (dc_num_t num)
 }
 
 void
-cell_disp (FILE *f, const cell *c)
+cell_display (FILE *f, const cell *c)
 {
     switch (c->type)
     {
@@ -71,13 +58,6 @@ cell_clear (cell *c)
     c->type = CELL_STR;
     c->as.str = NULL;
 }
-
-typedef struct
-{
-    cell *data;
-    size_t top, cap;
-} stack;
-#define INITIAL_STACK_SIZE 64
 
 void
 push (stack *s, cell c)
@@ -109,29 +89,22 @@ const cell *
 peek (stack *s)
 {
     if (s->top == 0) return NULL;
-
     return &s->data[s->top - 1];
-}
-
-const cell *
-top (stack *s)
-{
-    const cell *c = peek (s);
-    if (!c) fprintf (stderr, "dc/top: stack is empty\n");
-    return c;
 }
 
 void
 stack_free (stack *s)
 {
+    if (s->data == NULL) goto reset;
     for (size_t i = 0; i < s->top; ++i) cell_clear (&s->data[i]);
     free (s->data);
+reset:
     s->data = NULL;
     s->top = s->cap = 0;
 }
 
 void
-dump (const stack *s)
+stack_dump (const stack *s)
 {
     printf ("[%lu]\n", s->top);
     for (size_t i = 0; i < s->top; ++i)
@@ -144,18 +117,10 @@ dump (const stack *s)
         case CELL_NUM: printf ("NUM"); break;
         }
         printf ("> ");
-        cell_disp (stdout, c);
+        cell_display (stdout, c);
         printf ("\n");
     }
 }
-
-typedef struct
-{
-    stack dstack;
-} execution_ctx;
-
-typedef void (*command_cb) (execution_ctx *, void *);
-static command_cb dispatch_table[256] = { 0 };
 
 void
 dispatch (execution_ctx *ctx, int cmd, void *userdata)
@@ -175,6 +140,31 @@ register_callback (int cmd, command_cb cb)
 }
 
 void
+execute_expr (execution_ctx *ctx, const char *expr)
+{
+    lexer l = {
+        .idx = 0,
+        .src = expr,
+        .len = strlen (expr),
+    };
+    token t = { .kind = TOKEN_EOF };
+
+    do
+    {
+        token_clear (&t);
+        t = token_next (&l);
+
+        switch (t.kind)
+        {
+        case TOKEN_CMD: dispatch (ctx, t.as.cmd, NULL); break;
+        case TOKEN_STR: push (&ctx->dstack, cell_strv (t.as.str)); break;
+        case TOKEN_NUM: push (&ctx->dstack, cell_number (t.as.num));
+        case TOKEN_EOF: break;
+        }
+    } while (t.kind != TOKEN_EOF);
+}
+
+void
 dispatch_plus (execution_ctx *ctx, void *data)
 {
     (void)data;
@@ -185,7 +175,7 @@ dispatch_plus (execution_ctx *ctx, void *data)
     if (c[0].type != c[1].type)
     {
         fprintf (stderr, "dc/dispatch_plus: can't add string to a number\n");
-        return;
+        goto cleanup;
     }
 
     switch (c[0].type)
@@ -216,6 +206,7 @@ dispatch_plus (execution_ctx *ctx, void *data)
     }
     }
 
+cleanup:
     cell_clear (c);
     cell_clear (c + 1);
 }
@@ -230,99 +221,19 @@ dispatch_print (execution_ctx *ctx, void *data)
         fprintf (stderr, "dc/dispatch_print: stack is empty\n");
         return;
     }
-    cell_disp (stdout, c);
+    cell_display (stdout, c);
     puts ("");
 }
 
 void
-execute_expr (execution_ctx *ctx, const char *expr)
-{
-    lexer l = {
-        .idx = 0,
-        .src = expr,
-        .len = strlen (expr),
-    };
-    token t = { .kind = TOKEN_EOF };
-
-    do
-    {
-        token_clear (&t);
-        t = token_next (&l);
-
-        switch (t.kind)
-        {
-        case TOKEN_CMD: dispatch (ctx, t.as.cmd, NULL); break;
-        case TOKEN_STR: push (&ctx->dstack, cell_strv (t.as.str)); break;
-        case TOKEN_NUM: push (&ctx->dstack, cell_number (t.as.num));
-        case TOKEN_EOF: break;
-        }
-    } while (t.kind != TOKEN_EOF);
-}
-
-int
-main (void)
+register_defaults (void)
 {
     register_callback ('+', dispatch_plus);
     register_callback ('p', dispatch_print);
+}
 
-    execution_ctx ctx = { 0 };
-    execute_expr (&ctx, "2 2 + p");
-    execute_expr (&ctx, "65 + p");
-    execute_expr (&ctx, "[Hatsune]");
-    execute_expr (&ctx, "[ ]");
-    execute_expr (&ctx, "[Miku]");
-    execute_expr (&ctx, "++p");
-    execute_expr (&ctx, "+p");
-    stack_free (&ctx.dstack);
-
-    // execution_ctx ctx = { 0 };
-
-    // mpf_t n;
-
-    // mpf_init_set_ui (n, 34);
-    // push (&ctx.dstack, cell_number (n));
-
-    // mpf_set_ui (n, 35);
-    // push (&ctx.dstack, cell_number (n));
-
-    // dispatch (&ctx, '+', NULL);
-    // dispatch (&ctx, 'p', NULL);
-
-    // push (&ctx.dstack, cell_string ("Hatsune"));
-    // push (&ctx.dstack, cell_string ("Miku"));
-
-    // dump (&ctx.dstack);
-
-    // dispatch (&ctx, '+', NULL);
-    // dispatch (&ctx, 'p', NULL);
-
-    // mpf_clear (n);
-    // stack_free (&ctx.dstack);
-
-    // const char *test = "2 2 + [Hatsune Miku :3] 69.420 xD";
-
-    // lexer l = {
-    //     .idx = 0,
-    //     .src = test,
-    //     .len = strlen (test),
-    // };
-    // token t;
-
-    // do
-    // {
-    //     t = token_next (&l);
-    //     switch (t.kind)
-    //     {
-    //     case TOKEN_CMD: printf ("<CMD> [%c]\n", t.as.cmd); break;
-    //     case TOKEN_NUM:
-    //         printf ("<NUM> [");
-    //         mpf_out_str (stdout, 10, 0, t.as.num);
-    //         printf ("]\n");
-    //         break;
-    //     case TOKEN_STR: printf ("<STR> [%.*s]\n", (int)t.as.str.len, t.as.str.ptr); break;
-    //     case TOKEN_EOF: break;
-    //     }
-    // } while (t.kind != TOKEN_EOF);
-
-    return 0;
+void
+execution_done (execution_ctx *ctx)
+{
+    stack_free (&ctx->dstack);
 }
