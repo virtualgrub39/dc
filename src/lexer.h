@@ -35,5 +35,6 @@ typedef struct
 } lexer;
 
 token token_next (lexer *l);
+void token_clear (token *t);
 
 #endif

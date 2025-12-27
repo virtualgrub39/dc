@@ -106,15 +106,19 @@ popn (stack *s, cell *c, size_t n)
 }
 
 const cell *
-top (stack *s)
+peek (stack *s)
 {
-    if (s->top == 0)
-    {
-        fprintf (stderr, "dc/top: stack is empty\n");
-        return NULL;
-    }
+    if (s->top == 0) return NULL;
 
     return &s->data[s->top - 1];
+}
+
+const cell *
+top (stack *s)
+{
+    const cell *c = peek (s);
+    if (!c) fprintf (stderr, "dc/top: stack is empty\n");
+    return c;
 }
 
 void
@@ -192,9 +196,6 @@ dispatch_plus (execution_ctx *ctx, void *data)
 
         mpf_add (r, c[0].as.num, c[1].as.num);
 
-        cell_clear (c);
-        cell_clear (c + 1);
-
         push (&ctx->dstack, cell_number (r));
 
         mpf_clear (r);
@@ -208,25 +209,54 @@ dispatch_plus (execution_ctx *ctx, void *data)
         sprintf (new, "%s%s", c[1].as.str, c[0].as.str);
         new[newlen] = 0;
 
-        cell_clear (c);
-        cell_clear (c + 1);
-
         push (&ctx->dstack, cell_string (new));
 
         free (new);
         break;
     }
     }
+
+    cell_clear (c);
+    cell_clear (c + 1);
 }
 
 void
 dispatch_print (execution_ctx *ctx, void *data)
 {
     (void)data;
-    const cell *c = top (&ctx->dstack);
-    if (c == NULL) return;
+    const cell *c = peek (&ctx->dstack);
+    if (c == NULL)
+    {
+        fprintf (stderr, "dc/dispatch_print: stack is empty\n");
+        return;
+    }
     cell_disp (stdout, c);
     puts ("");
+}
+
+void
+execute_expr (execution_ctx *ctx, const char *expr)
+{
+    lexer l = {
+        .idx = 0,
+        .src = expr,
+        .len = strlen (expr),
+    };
+    token t = { .kind = TOKEN_EOF };
+
+    do
+    {
+        token_clear (&t);
+        t = token_next (&l);
+
+        switch (t.kind)
+        {
+        case TOKEN_CMD: dispatch (ctx, t.as.cmd, NULL); break;
+        case TOKEN_STR: push (&ctx->dstack, cell_strv (t.as.str)); break;
+        case TOKEN_NUM: push (&ctx->dstack, cell_number (t.as.num));
+        case TOKEN_EOF: break;
+        }
+    } while (t.kind != TOKEN_EOF);
 }
 
 int
@@ -236,28 +266,38 @@ main (void)
     register_callback ('p', dispatch_print);
 
     execution_ctx ctx = { 0 };
-
-    mpf_t n;
-
-    mpf_init_set_ui (n, 34);
-    push (&ctx.dstack, cell_number (n));
-
-    mpf_set_ui (n, 35);
-    push (&ctx.dstack, cell_number (n));
-
-    dispatch (&ctx, '+', NULL);
-    dispatch (&ctx, 'p', NULL);
-
-    push (&ctx.dstack, cell_string ("Hatsune"));
-    push (&ctx.dstack, cell_string ("Miku"));
-
-    dump (&ctx.dstack);
-
-    dispatch (&ctx, '+', NULL);
-    dispatch (&ctx, 'p', NULL);
-
-    mpf_clear (n);
+    execute_expr (&ctx, "2 2 + p");
+    execute_expr (&ctx, "65 + p");
+    execute_expr (&ctx, "[Hatsune]");
+    execute_expr (&ctx, "[ ]");
+    execute_expr (&ctx, "[Miku]");
+    execute_expr (&ctx, "++p");
+    execute_expr (&ctx, "+p");
     stack_free (&ctx.dstack);
+
+    // execution_ctx ctx = { 0 };
+
+    // mpf_t n;
+
+    // mpf_init_set_ui (n, 34);
+    // push (&ctx.dstack, cell_number (n));
+
+    // mpf_set_ui (n, 35);
+    // push (&ctx.dstack, cell_number (n));
+
+    // dispatch (&ctx, '+', NULL);
+    // dispatch (&ctx, 'p', NULL);
+
+    // push (&ctx.dstack, cell_string ("Hatsune"));
+    // push (&ctx.dstack, cell_string ("Miku"));
+
+    // dump (&ctx.dstack);
+
+    // dispatch (&ctx, '+', NULL);
+    // dispatch (&ctx, 'p', NULL);
+
+    // mpf_clear (n);
+    // stack_free (&ctx.dstack);
 
     // const char *test = "2 2 + [Hatsune Miku :3] 69.420 xD";
 

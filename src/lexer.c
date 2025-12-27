@@ -105,3 +105,13 @@ token_next (lexer *l)
         return r;
     }
 }
+
+void
+token_clear (token *t)
+{
+    switch (t->kind)
+    {
+    case TOKEN_NUM: mpf_clear (t->as.num); break;
+    default: t->kind = TOKEN_EOF;
+    }
+}
