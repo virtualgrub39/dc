@@ -63,8 +63,9 @@ main (int argc, const char *argv[])
 {
     int c;
 
-    register_defaults ();
     execution_ctx ctx = { 0 };
+    execution_init (&ctx, 4);
+    register_defaults (&ctx);
 
     while ((c = getopt_long (argc, (char *const *)argv, shortopts, longopts, 0)) != -1)
     {

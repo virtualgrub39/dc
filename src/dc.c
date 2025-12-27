@@ -186,28 +186,28 @@ reset:
 }
 
 void
-stack_dump (const stack *s, size_t prec)
+stack_dump (FILE *f, const stack *s, size_t prec)
 {
-    printf ("[%lu]\n", s->top);
+    fprintf (f, "[%lu]\n", s->top);
     for (size_t i = 0; i < s->top; ++i)
     {
         const cell *c = &s->data[i];
-        printf ("<");
+        fprintf (f, "<");
         switch (c->type)
         {
-        case CELL_STR: printf ("STR"); break;
-        case CELL_NUM: printf ("NUM"); break;
+        case CELL_STR: fprintf (f, "STR"); break;
+        case CELL_NUM: fprintf (f, "NUM"); break;
         }
-        printf ("> ");
-        cell_display (stdout, c, prec);
-        printf ("\n");
+        fprintf (f, "> ");
+        cell_display (f, c, prec);
+        fprintf (f, "\n");
     }
 }
 
 void
 dispatch (execution_ctx *ctx, int cmd, void *userdata)
 {
-    if (dispatch_table[cmd] == NULL)
+    if (ctx->dispatch_table[cmd] == NULL)
     {
         const char *cmd_fmt = isprint (cmd) ? "%c" : "0x%02X";
         fprintf (stderr, "dc/dispatch(");
@@ -215,13 +215,13 @@ dispatch (execution_ctx *ctx, int cmd, void *userdata)
         fprintf (stderr, "): command not implemented\n");
         return;
     }
-    dispatch_table[cmd](ctx, userdata);
+    ctx->dispatch_table[cmd](ctx, userdata);
 }
 
 void
-register_callback (int cmd, command_cb cb)
+register_callback (execution_ctx *ctx, int cmd, command_cb cb)
 {
-    dispatch_table[cmd] = cb;
+    ctx->dispatch_table[cmd] = cb;
 }
 
 void
@@ -359,7 +359,7 @@ void
 dispatch_print_f (execution_ctx *ctx, void *data)
 {
     (void)data;
-    stack_dump (&ctx->dstack, ctx->prec);
+    stack_dump (stdout, &ctx->dstack, ctx->prec);
 }
 
 void
@@ -746,34 +746,41 @@ dispatch_len (execution_ctx *ctx, void *data)
 }
 
 void
-register_defaults (void)
+register_defaults (execution_ctx *ctx)
 {
-    register_callback ('p', dispatch_print);
-    register_callback ('P', dispatch_print_p);
-    register_callback ('q', dispatch_quit);
-    register_callback ('f', dispatch_print_f);
-    register_callback ('c', dispatch_clear);
-    register_callback ('k', dispatch_prec);
-    register_callback ('d', dispatch_dup);
-    register_callback ('Q', dispatch_quit_n);
+    register_callback (ctx, 'p', dispatch_print);
+    register_callback (ctx, 'P', dispatch_print_p);
+    register_callback (ctx, 'q', dispatch_quit);
+    register_callback (ctx, 'f', dispatch_print_f);
+    register_callback (ctx, 'c', dispatch_clear);
+    register_callback (ctx, 'k', dispatch_prec);
+    register_callback (ctx, 'd', dispatch_dup);
+    register_callback (ctx, 'Q', dispatch_quit_n);
 
-    register_callback ('+', dispatch_add);
-    register_callback ('-', dispatch_sub);
-    register_callback ('*', dispatch_mul);
-    register_callback ('/', dispatch_div);
-    register_callback ('%', dispatch_rem);
-    register_callback ('^', dispatch_exp);
-    register_callback ('v', dispatch_sqrt);
+    register_callback (ctx, '+', dispatch_add);
+    register_callback (ctx, '-', dispatch_sub);
+    register_callback (ctx, '*', dispatch_mul);
+    register_callback (ctx, '/', dispatch_div);
+    register_callback (ctx, '%', dispatch_rem);
+    register_callback (ctx, '^', dispatch_exp);
+    register_callback (ctx, 'v', dispatch_sqrt);
 
-    register_callback ('s', dispatch_rstore);
-    register_callback ('l', dispatch_rload);
-    register_callback ('S', dispatch_rpush);
-    register_callback ('L', dispatch_rpop);
+    register_callback (ctx, 's', dispatch_rstore);
+    register_callback (ctx, 'l', dispatch_rload);
+    register_callback (ctx, 'S', dispatch_rpush);
+    register_callback (ctx, 'L', dispatch_rpop);
 
-    register_callback ('x', dispatch_exec);
-    register_callback ('?', dispatch_read_exec);
+    register_callback (ctx, 'x', dispatch_exec);
+    register_callback (ctx, '?', dispatch_read_exec);
 
-    register_callback ('Z', dispatch_len);
+    register_callback (ctx, 'Z', dispatch_len);
+}
+
+void
+execution_init (execution_ctx *ctx, size_t prec)
+{
+    memset (ctx, 0, sizeof (execution_ctx));
+    ctx->prec = prec;
 }
 
 void

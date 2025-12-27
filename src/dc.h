@@ -72,24 +72,28 @@ bool popn (stack *s, cell *c, size_t n);
 const cell *peek (stack *s);
 void stack_set (stack *s, cell c);
 void stack_free (stack *s);
-void stack_dump (const stack *s, size_t prec);
+void stack_dump (FILE *f, const stack *s, size_t prec);
+
+struct execution_ctx;
 
 #define REG_COUNT 128
-typedef struct
+typedef void (*command_cb) (struct execution_ctx *, void *);
+
+typedef struct execution_ctx
 {
     stack dstack;
     lexer l;
-    stack r[REG_COUNT];
     int exec_level;
     size_t prec;
+    stack r[REG_COUNT];
+    command_cb dispatch_table[256];
 } execution_ctx;
 
-typedef void (*command_cb) (execution_ctx *, void *);
-static command_cb dispatch_table[256] = { 0 };
+void execution_init (execution_ctx *ctx, size_t prec);
 
 void dispatch (execution_ctx *ctx, int cmd, void *userdata);
-void register_callback (int cmd, command_cb cb);
-void register_defaults (void);
+void register_callback (execution_ctx *ctx, int cmd, command_cb cb);
+void register_defaults (execution_ctx *ctx);
 
 void reg_store (execution_ctx *ctx, int reg, cell v);
 void reg_push (execution_ctx *ctx, int reg, cell v);
