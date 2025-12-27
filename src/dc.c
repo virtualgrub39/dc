@@ -95,8 +95,14 @@ bool
 popn (stack *s, cell *c, size_t n)
 {
     if (s->top < n) return false;
-    for (size_t i = 0; i < n; ++i) { c[i] = s->data[s->top - i - 1]; }
-    s->top -= n;
+
+    for (size_t i = 0; i < n; ++i)
+    {
+        s->top -= 1;
+        c[i] = s->data[s->top];
+        s->data[s->top].type = CELL_STR;
+        s->data[s->top].as.str = NULL;
+    }
     return true;
 }
 
@@ -113,7 +119,10 @@ stack_set (stack *s, cell c)
     if (s->top == 0)
         push (s, c);
     else
+    {
+        cell_clear (&s->data[s->top]);
         s->data[s->top] = c;
+    }
 }
 
 void
@@ -148,10 +157,10 @@ reg_load (execution_ctx *ctx, int reg, cell *c)
     }
     const cell *temp = peek (&ctx->r[reg]);
     if (temp == NULL) return false;
-    *c = *temp;
+
+    *c = cell_clone (temp);
     return true;
 }
-
 bool
 reg_pop (execution_ctx *ctx, int reg, cell *c)
 {
@@ -223,6 +232,8 @@ execute_expr (execution_ctx *ctx, const char *expr)
     };
     token t = { .kind = TOKEN_EOF };
 
+    int level = ctx->exec_level++;
+
     do
     {
         token_clear (&t);
@@ -245,7 +256,12 @@ execute_expr (execution_ctx *ctx, const char *expr)
             // case TOKEN_STR: printf ("<STR> [%.*s]\n", (int)t.as.str.len, t.as.str.ptr); break;
             // case TOKEN_EOF: break;
         }
-    } while (t.kind != TOKEN_EOF && !ctx->quit);
+
+        if (ctx->exec_level <= level) break;
+
+    } while (t.kind != TOKEN_EOF);
+
+    ctx->exec_level--;
 }
 
 void
@@ -310,12 +326,11 @@ dispatch_print (execution_ctx *ctx, void *data)
 }
 
 void
-dispatch_quit (execution_ctx *ctx, void *data)
+dispatch_quit (execution_ctx *ctx, void *data) // "q"
 {
     (void)data;
-    ctx->quit = true;
+    if (ctx->exec_level > 0) ctx->exec_level--;
 }
-
 void
 dispatch_clear (execution_ctx *ctx, void *data)
 {
@@ -627,6 +642,66 @@ dispatch_rpop (execution_ctx *ctx, void *data)
     push (&ctx->dstack, c);
 }
 
+static void
+execute_macro (execution_ctx *ctx, const char *expr)
+{
+    lexer l = ctx->l; // lexer does not persist between execute_expr calls.
+    execute_expr (ctx, expr);
+    ctx->l = l;
+}
+
+void
+dispatch_exec (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c;
+    if (!popn (&ctx->dstack, &c, 1)) return;
+
+    if (c.type == CELL_NUM)
+        push (&ctx->dstack, c);
+    else
+        execute_macro (ctx, c.as.str);
+
+    cell_clear (&c);
+}
+
+void
+dispatch_read_exec (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    char *line;
+    size_t linelen = 0;
+
+    ssize_t read = getline (&line, &linelen, stdin);
+    if (read == -1) return;
+
+    execute_macro (ctx, line);
+
+    free (line);
+}
+
+void
+dispatch_quit_n (execution_ctx *ctx, void *data)
+{
+    (void)data;
+    cell c;
+    if (!popn (&ctx->dstack, &c, 1)) return;
+
+    if (c.type != CELL_NUM)
+    {
+        cell_clear (&c);
+        return;
+    }
+
+    int levels = mpf_get_ui (c.as.num);
+    cell_clear (&c);
+
+    ctx->exec_level -= levels;
+    if (ctx->exec_level < 0) ctx->exec_level = 0;
+}
+
 void
 register_defaults (void)
 {
@@ -636,6 +711,7 @@ register_defaults (void)
     register_callback ('c', dispatch_clear);
     register_callback ('k', dispatch_prec);
     register_callback ('d', dispatch_dup);
+    register_callback ('Q', dispatch_quit_n);
 
     register_callback ('+', dispatch_add);
     register_callback ('-', dispatch_sub);
@@ -649,6 +725,9 @@ register_defaults (void)
     register_callback ('l', dispatch_rload);
     register_callback ('S', dispatch_rpush);
     register_callback ('L', dispatch_rpop);
+
+    register_callback ('x', dispatch_exec);
+    register_callback ('?', dispatch_read_exec);
 }
 
 void

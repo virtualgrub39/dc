@@ -78,9 +78,9 @@ void stack_dump (const stack *s);
 typedef struct
 {
     stack dstack;
-    bool quit;
     lexer l;
     stack r[REG_COUNT];
+    int exec_level;
 } execution_ctx;
 
 typedef void (*command_cb) (execution_ctx *, void *);
