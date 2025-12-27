@@ -10,7 +10,8 @@ execute_file (execution_ctx *ctx, FILE *f)
     ssize_t linelen;
     size_t linesize = 0;
 
-    while ((linelen = getline (&line, &linesize, f)) != -1) execute_expr (ctx, line);
+    while (!ctx->quit && (linelen = getline (&line, &linesize, f)) != -1) //
+        execute_expr (ctx, line);
 
     free (line);
     if (ferror (f)) perror ("dc/getline: ");

@@ -13,7 +13,7 @@ float_prefix_len (const char *s)
     if (*p == '+' || *p == '-') p++;
 
     const char *int_start = p;
-    while (isdigit ((unsigned char)*p)) p++;
+    while (*p && isdigit ((unsigned char)*p)) p++;
     int digits_before = (int)(p - int_start);
 
     int digits_after = 0;
@@ -78,6 +78,8 @@ token_next (lexer *l)
 {
     if (l->idx == l->len) return (token){ .kind = TOKEN_EOF };
     while (l->src[l->idx] && isspace (l->src[l->idx])) l->idx += 1;
+
+    if (l->src[l->idx] == '\0') return (token){ .kind = TOKEN_EOF };
 
     char c = l->src[l->idx];
     token r;

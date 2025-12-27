@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -127,7 +128,10 @@ dispatch (execution_ctx *ctx, int cmd, void *userdata)
 {
     if (dispatch_table[cmd] == NULL)
     {
-        fprintf (stderr, "dc/dispatch(%c): command not implemented\n", cmd);
+        const char *cmd_fmt = isprint (cmd) ? "%c" : "0x%02X";
+        fprintf (stderr, "dc/dispatch(");
+        fprintf (stderr, cmd_fmt, cmd);
+        fprintf (stderr, "): command not implemented\n");
         return;
     }
     dispatch_table[cmd](ctx, userdata);
@@ -158,10 +162,20 @@ execute_expr (execution_ctx *ctx, const char *expr)
         {
         case TOKEN_CMD: dispatch (ctx, t.as.cmd, NULL); break;
         case TOKEN_STR: push (&ctx->dstack, cell_strv (t.as.str)); break;
-        case TOKEN_NUM: push (&ctx->dstack, cell_number (t.as.num));
-        case TOKEN_EOF: break;
+        case TOKEN_NUM: push (&ctx->dstack, cell_number (t.as.num)); break;
+        case TOKEN_EOF:
+            break;
+
+            // case TOKEN_CMD: printf ("<CMD> [%c]\n", t.as.cmd); break;
+            // case TOKEN_NUM:
+            //     printf ("<NUM> [");
+            //     mpf_out_str (stdout, 10, 0, t.as.num);
+            //     printf ("]\n");
+            //     break;
+            // case TOKEN_STR: printf ("<STR> [%.*s]\n", (int)t.as.str.len, t.as.str.ptr); break;
+            // case TOKEN_EOF: break;
         }
-    } while (t.kind != TOKEN_EOF);
+    } while (t.kind != TOKEN_EOF && !ctx->quit);
 }
 
 void
@@ -226,10 +240,18 @@ dispatch_print (execution_ctx *ctx, void *data)
 }
 
 void
+dispatch_quit (execution_ctx *ctx, void *data)
+{
+    (void)data;
+    ctx->quit = true;
+}
+
+void
 register_defaults (void)
 {
     register_callback ('+', dispatch_plus);
     register_callback ('p', dispatch_print);
+    register_callback ('q', dispatch_quit);
 }
 
 void
