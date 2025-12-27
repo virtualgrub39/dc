@@ -61,6 +61,19 @@ cell_clear (cell *c)
     c->as.str = NULL;
 }
 
+cell
+cell_clone (const cell *c)
+{
+    switch (c->type)
+    {
+    case CELL_NUM: return cell_number (c->as.num);
+    case CELL_STR: return cell_string (c->as.str);
+    }
+
+    fprintf (stderr, "dc/cell_clone: UNREACHABLE\n");
+    abort ();
+}
+
 void
 push (stack *s, cell c)
 {
@@ -92,6 +105,62 @@ peek (stack *s)
 {
     if (s->top == 0) return NULL;
     return &s->data[s->top - 1];
+}
+
+void
+stack_set (stack *s, cell c)
+{
+    if (s->top == 0)
+        push (s, c);
+    else
+        s->data[s->top] = c;
+}
+
+void
+reg_store (execution_ctx *ctx, int reg, cell v)
+{
+    if (reg < 0 || reg >= REG_COUNT)
+    {
+        fprintf (stderr, "dc/reg_store: invalid register identifier\n");
+        return;
+    }
+    stack_set (&ctx->r[reg], v);
+}
+
+void
+reg_push (execution_ctx *ctx, int reg, cell v)
+{
+    if (reg < 0 || reg >= REG_COUNT)
+    {
+        fprintf (stderr, "dc/reg_push: invalid register identifier\n");
+        return;
+    }
+    push (&ctx->r[reg], v);
+}
+
+bool
+reg_load (execution_ctx *ctx, int reg, cell *c)
+{
+    if (reg < 0 || reg >= REG_COUNT)
+    {
+        fprintf (stderr, "dc/reg_load: invalid register identifier\n");
+        return false;
+    }
+    const cell *temp = peek (&ctx->r[reg]);
+    if (temp == NULL) return false;
+    *c = *temp;
+    return true;
+}
+
+bool
+reg_pop (execution_ctx *ctx, int reg, cell *c)
+{
+    if (reg < 0 || reg >= REG_COUNT)
+    {
+        fprintf (stderr, "dc/reg_pop: invalid register identifier\n");
+        return false;
+    }
+    return popn (&ctx->r[reg], c, 1);
 }
 
 void
@@ -147,7 +216,7 @@ register_callback (int cmd, command_cb cb)
 void
 execute_expr (execution_ctx *ctx, const char *expr)
 {
-    lexer l = {
+    ctx->l = (lexer){
         .idx = 0,
         .src = expr,
         .len = strlen (expr),
@@ -157,7 +226,7 @@ execute_expr (execution_ctx *ctx, const char *expr)
     do
     {
         token_clear (&t);
-        t = token_next (&l);
+        t = token_next (&ctx->l);
 
         switch (t.kind)
         {
@@ -348,8 +417,22 @@ cleanup:
 static void
 mpf_rem (mpf_t result, mpf_t a, mpf_t b)
 {
-    fprintf (stderr, "TODO: mpf_rem\n");
-    abort ();
+    mpf_t t1, t2;
+    mpf_init_set (t1, a);
+    mpf_init (t2);
+
+    for (;;)
+    {
+        mpf_sub (t2, t1, b);
+        if (mpf_cmp_ui (t2, 0) < 0) // t2 < 0
+        {
+            mpf_set (result, t1);
+            mpf_clear (t1);
+            mpf_clear (t2);
+            return;
+        }
+        mpf_set (t1, t2);
+    }
 }
 
 void
@@ -469,11 +552,79 @@ dispatch_dup (execution_ctx *ctx, void *data)
         return;
     }
 
-    switch (c->type)
+    push (&ctx->dstack, cell_clone (c));
+}
+
+void
+dispatch_rstore (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    int reg = reg_next (&ctx->l);
+    if (reg < 0)
     {
-    case CELL_NUM: push (&ctx->dstack, cell_number (c->as.num)); break;
-    case CELL_STR: push (&ctx->dstack, cell_string (c->as.str)); break;
+        fprintf (stderr, "dc/dispatch_rstore: expected register identifier\n");
+        return;
     }
+
+    cell c;
+    if (!popn (&ctx->dstack, &c, 1)) return;
+
+    reg_store (ctx, reg, c);
+}
+
+void
+dispatch_rload (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    int reg = reg_next (&ctx->l);
+    if (reg < 0)
+    {
+        fprintf (stderr, "dc/dispatch_rload: expected register identifier\n");
+        return;
+    }
+
+    cell c;
+    if (!reg_load (ctx, reg, &c)) return;
+
+    push (&ctx->dstack, c);
+}
+
+void
+dispatch_rpush (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    int reg = reg_next (&ctx->l);
+    if (reg < 0)
+    {
+        fprintf (stderr, "dc/dispatch_rpush: expected register identifier\n");
+        return;
+    }
+
+    cell c;
+    if (!popn (&ctx->dstack, &c, 1)) return;
+
+    reg_push (ctx, reg, c);
+}
+
+void
+dispatch_rpop (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    int reg = reg_next (&ctx->l);
+    if (reg < 0)
+    {
+        fprintf (stderr, "dc/dispatch_rpop: expected register identifier\n");
+        return;
+    }
+
+    cell c;
+    if (!reg_pop (ctx, reg, &c)) return;
+
+    push (&ctx->dstack, c);
 }
 
 void
@@ -493,6 +644,11 @@ register_defaults (void)
     register_callback ('%', dispatch_rem);
     register_callback ('^', dispatch_exp);
     register_callback ('v', dispatch_sqrt);
+
+    register_callback ('s', dispatch_rstore);
+    register_callback ('l', dispatch_rload);
+    register_callback ('S', dispatch_rpush);
+    register_callback ('L', dispatch_rpop);
 }
 
 void
