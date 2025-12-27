@@ -1,14 +1,14 @@
 #include <assert.h>
 #include <ctype.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <gmp.h>
-#include <math.h>
 
 #include "dc.h"
-#include "lexer.h"
 
 cell
 cell_strv (dc_strv_t strv)

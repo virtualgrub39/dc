@@ -19,7 +19,10 @@ LDFLAGS += $(shell pkg-config --libs   gmp)
 
 LDFLAGS += -lm
 
-all: $(TARGET) lib$(TARGET).a
+all: repl lib
+
+repl: $(TARGET)
+lib: lib$(TARGET).a
 
 LIBO = $(notdir $(LIBSRC:.c=.o))
 
@@ -35,4 +38,4 @@ lib$(TARGET).a: $(LIBO)
 clean:
 	$(RM) $(LIBO) $(TARGET) lib$(TARGET).a
 
-.PHONY: all clean
+.PHONY: all clean repl lib

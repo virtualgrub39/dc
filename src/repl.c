@@ -2,6 +2,7 @@
 
 #include <getopt.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 void
 execute_file (execution_ctx *ctx, FILE *f)
