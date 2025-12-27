@@ -117,3 +117,11 @@ token_clear (token *t)
     default: t->kind = TOKEN_EOF;
     }
 }
+
+int
+reg_next (lexer *l)
+{
+    if (l->idx == l->len) return -1;
+    while (l->src[l->idx] && isspace (l->src[l->idx])) l->idx += 1;
+    return l->src[l->idx++];
+}

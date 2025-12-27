@@ -36,5 +36,6 @@ typedef struct
 
 token token_next (lexer *l);
 void token_clear (token *t);
+int reg_next (lexer *l);
 
 #endif

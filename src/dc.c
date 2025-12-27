@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include <gmp.h>
+#include <math.h>
 
 #include "dc.h"
 #include "lexer.h"
@@ -28,7 +29,7 @@ cell_string (const char *str)
 }
 
 cell
-cell_number (dc_num_t num)
+cell_number (const dc_num_t num)
 {
     cell r = (cell){
         .type = CELL_NUM,
@@ -179,7 +180,7 @@ execute_expr (execution_ctx *ctx, const char *expr)
 }
 
 void
-dispatch_plus (execution_ctx *ctx, void *data)
+dispatch_add (execution_ctx *ctx, void *data)
 {
     (void)data;
 
@@ -188,7 +189,7 @@ dispatch_plus (execution_ctx *ctx, void *data)
 
     if (c[0].type != c[1].type)
     {
-        fprintf (stderr, "dc/dispatch_plus: can't add string to a number\n");
+        fprintf (stderr, "dc/dispatch_add: can't add string to a number\n");
         goto cleanup;
     }
 
@@ -247,11 +248,251 @@ dispatch_quit (execution_ctx *ctx, void *data)
 }
 
 void
+dispatch_clear (execution_ctx *ctx, void *data)
+{
+    (void)data;
+    ctx->dstack.top = 0;
+}
+
+void
+dispatch_print_f (execution_ctx *ctx, void *data)
+{
+    (void)data;
+    stack_dump (&ctx->dstack);
+}
+
+void
+dispatch_sub (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c[2];
+    if (!popn (&ctx->dstack, c, 2)) return;
+
+    if (c[0].type != c[1].type || c[0].type != CELL_NUM)
+    {
+        fprintf (stderr, "dc/dispatch_sub: can't subtract a string\n");
+        goto cleanup;
+    }
+
+    mpf_t r;
+    mpf_init (r);
+
+    mpf_sub (r, c[1].as.num, c[0].as.num);
+
+    push (&ctx->dstack, cell_number (r));
+
+    mpf_clear (r);
+
+cleanup:
+    cell_clear (c);
+    cell_clear (c + 1);
+}
+
+void
+dispatch_mul (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c[2];
+    if (!popn (&ctx->dstack, c, 2)) return;
+
+    if (c[0].type != c[1].type || c[0].type != CELL_NUM)
+    {
+        fprintf (stderr, "dc/dispatch_mul: can't multiply with a string\n");
+        goto cleanup;
+    }
+
+    mpf_t r;
+    mpf_init (r);
+
+    mpf_mul (r, c[1].as.num, c[0].as.num);
+
+    push (&ctx->dstack, cell_number (r));
+
+    mpf_clear (r);
+
+cleanup:
+    cell_clear (c);
+    cell_clear (c + 1);
+}
+
+void
+dispatch_div (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c[2];
+    if (!popn (&ctx->dstack, c, 2)) return;
+
+    if (c[0].type != c[1].type || c[0].type != CELL_NUM)
+    {
+        fprintf (stderr, "dc/dispatch_div: can't divide with a string\n");
+        goto cleanup;
+    }
+
+    mpf_t r;
+    mpf_init (r);
+
+    mpf_div (r, c[1].as.num, c[0].as.num);
+
+    push (&ctx->dstack, cell_number (r));
+
+    mpf_clear (r);
+
+cleanup:
+    cell_clear (c);
+    cell_clear (c + 1);
+}
+
+static void
+mpf_rem (mpf_t result, mpf_t a, mpf_t b)
+{
+    fprintf (stderr, "TODO: mpf_rem\n");
+    abort ();
+}
+
+void
+dispatch_rem (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c[2];
+    if (!popn (&ctx->dstack, c, 2)) return;
+
+    if (c[0].type != c[1].type || c[0].type != CELL_NUM)
+    {
+        fprintf (stderr, "dc/dispatch_rem: can't divide with a string\n");
+        goto cleanup;
+    }
+
+    mpf_t r;
+    mpf_init (r);
+
+    mpf_rem (r, c[1].as.num, c[0].as.num);
+
+    push (&ctx->dstack, cell_number (r));
+
+    mpf_clear (r);
+
+cleanup:
+    cell_clear (c);
+    cell_clear (c + 1);
+}
+
+void
+dispatch_exp (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c[2];
+    if (!popn (&ctx->dstack, c, 2)) return;
+
+    if (c[0].type != c[1].type || c[0].type != CELL_NUM)
+    {
+        fprintf (stderr, "dc/dispatch_exp: can't exponentiate with a string\n");
+        goto cleanup;
+    }
+
+    mpf_t r;
+    mpf_init (r);
+
+    mpf_pow_ui (r, c[1].as.num, mpf_get_ui (c[0].as.num));
+
+    push (&ctx->dstack, cell_number (r));
+
+    mpf_clear (r);
+
+cleanup:
+    cell_clear (c);
+    cell_clear (c + 1);
+}
+
+void
+dispatch_sqrt (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c;
+    if (!popn (&ctx->dstack, &c, 1)) return;
+
+    if (c.type != CELL_NUM)
+    {
+        fprintf (stderr, "dc/dispatch_sqrt: can't sqrt a string\n");
+        goto cleanup;
+    }
+
+    mpf_t r;
+    mpf_init (r);
+
+    mpf_sqrt (r, c.as.num);
+
+    push (&ctx->dstack, cell_number (r));
+
+    mpf_clear (r);
+
+cleanup:
+    cell_clear (&c);
+}
+
+void
+dispatch_prec (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c;
+    if (!popn (&ctx->dstack, &c, 1)) return;
+
+    if (c.type != CELL_NUM)
+    {
+        fprintf (stderr, "dc/dispatch_prec: expected number on top of the stack\n");
+        goto cleanup;
+    }
+
+    size_t prec_d = mpf_get_ui (c.as.num);
+    double prec_b = log2 (10) * prec_d;
+    mpf_set_default_prec (ceil (prec_b));
+
+cleanup:
+    cell_clear (&c);
+}
+
+void
+dispatch_dup (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    const cell *c = peek (&ctx->dstack);
+    if (!c)
+    {
+        fprintf (stderr, "dc/dispatch_dup: stack is empty\n");
+        return;
+    }
+
+    switch (c->type)
+    {
+    case CELL_NUM: push (&ctx->dstack, cell_number (c->as.num)); break;
+    case CELL_STR: push (&ctx->dstack, cell_string (c->as.str)); break;
+    }
+}
+
+void
 register_defaults (void)
 {
-    register_callback ('+', dispatch_plus);
     register_callback ('p', dispatch_print);
     register_callback ('q', dispatch_quit);
+    register_callback ('f', dispatch_print_f);
+    register_callback ('c', dispatch_clear);
+    register_callback ('k', dispatch_prec);
+    register_callback ('d', dispatch_dup);
+
+    register_callback ('+', dispatch_add);
+    register_callback ('-', dispatch_sub);
+    register_callback ('*', dispatch_mul);
+    register_callback ('/', dispatch_div);
+    register_callback ('%', dispatch_rem);
+    register_callback ('^', dispatch_exp);
+    register_callback ('v', dispatch_sqrt);
 }
 
 void

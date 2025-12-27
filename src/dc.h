@@ -22,7 +22,7 @@ typedef struct
 
 cell cell_strv (dc_strv_t strv);
 cell cell_string (const char *str);
-cell cell_number (dc_num_t num);
+cell cell_number (const dc_num_t num);
 void cell_display (FILE *f, const cell *c);
 void cell_clear (cell *c);
 

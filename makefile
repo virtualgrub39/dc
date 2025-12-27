@@ -17,7 +17,7 @@ CFLAGS += -D_DC_VERSION=\"$(VERSION)\"
 CFLAGS +=  $(shell pkg-config --cflags gmp)
 LDFLAGS += $(shell pkg-config --libs   gmp)
 
-LDFLAGS += 
+LDFLAGS += -lm
 
 all: $(TARGET) lib$(TARGET).a
 
