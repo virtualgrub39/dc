@@ -39,12 +39,14 @@ cell_number (const dc_num_t num)
 }
 
 void
-cell_display (FILE *f, const cell *c)
+cell_display (FILE *f, const cell *c, size_t prec)
 {
+    if (prec == 0) prec = 4;
+
     switch (c->type)
     {
     case CELL_STR: fprintf (f, "%s", c->as.str); break;
-    case CELL_NUM: mpf_out_str (f, 10, 0, c->as.num); break;
+    case CELL_NUM: gmp_printf ("%.*Ff", prec, c->as.num); break;
     }
 }
 
@@ -184,7 +186,7 @@ reset:
 }
 
 void
-stack_dump (const stack *s)
+stack_dump (const stack *s, size_t prec)
 {
     printf ("[%lu]\n", s->top);
     for (size_t i = 0; i < s->top; ++i)
@@ -197,7 +199,7 @@ stack_dump (const stack *s)
         case CELL_NUM: printf ("NUM"); break;
         }
         printf ("> ");
-        cell_display (stdout, c);
+        cell_display (stdout, c, prec);
         printf ("\n");
     }
 }
@@ -321,12 +323,27 @@ dispatch_print (execution_ctx *ctx, void *data)
         fprintf (stderr, "dc/dispatch_print: stack is empty\n");
         return;
     }
-    cell_display (stdout, c);
+    cell_display (stdout, c, ctx->prec);
     puts ("");
 }
 
 void
-dispatch_quit (execution_ctx *ctx, void *data) // "q"
+dispatch_print_p (execution_ctx *ctx, void *data)
+{
+    (void)data;
+    cell c;
+    if (!popn (&ctx->dstack, &c, 1))
+    {
+        fprintf (stderr, "dc/dispatch_print_p: stack is empty\n");
+        return;
+    }
+    cell_display (stdout, &c, ctx->prec);
+    fflush (stdout);
+    cell_clear (&c);
+}
+
+void
+dispatch_quit (execution_ctx *ctx, void *data)
 {
     (void)data;
     if (ctx->exec_level > 0) ctx->exec_level--;
@@ -342,7 +359,7 @@ void
 dispatch_print_f (execution_ctx *ctx, void *data)
 {
     (void)data;
-    stack_dump (&ctx->dstack);
+    stack_dump (&ctx->dstack, ctx->prec);
 }
 
 void
@@ -550,6 +567,7 @@ dispatch_prec (execution_ctx *ctx, void *data)
     size_t prec_d = mpf_get_ui (c.as.num);
     double prec_b = log2 (10) * prec_d;
     mpf_set_default_prec (ceil (prec_b));
+    ctx->prec = prec_d;
 
 cleanup:
     cell_clear (&c);
@@ -677,6 +695,10 @@ dispatch_read_exec (execution_ctx *ctx, void *data)
     ssize_t read = getline (&line, &linelen, stdin);
     if (read == -1) return;
 
+    if (linelen - read < 2) line = realloc (line, linelen + 2);
+    line[linelen] = 'q';
+    line[linelen + 1] = 0;
+
     execute_macro (ctx, line);
 
     free (line);
@@ -703,9 +725,31 @@ dispatch_quit_n (execution_ctx *ctx, void *data)
 }
 
 void
+dispatch_len (execution_ctx *ctx, void *data)
+{
+    (void)data;
+
+    cell c;
+    if (!popn (&ctx->dstack, &c, 1)) return;
+
+    mpf_t t;
+    switch (c.type)
+    {
+    case CELL_NUM: mpf_init_set_d (t, ceil (mpf_get_prec (c.as.num) * log10 (2))); break;
+    case CELL_STR: mpf_init_set_ui (t, strlen (c.as.str)); break;
+    }
+
+    push (&ctx->dstack, cell_number (t));
+    mpf_clear (t);
+
+    cell_clear (&c);
+}
+
+void
 register_defaults (void)
 {
     register_callback ('p', dispatch_print);
+    register_callback ('P', dispatch_print_p);
     register_callback ('q', dispatch_quit);
     register_callback ('f', dispatch_print_f);
     register_callback ('c', dispatch_clear);
@@ -728,6 +772,8 @@ register_defaults (void)
 
     register_callback ('x', dispatch_exec);
     register_callback ('?', dispatch_read_exec);
+
+    register_callback ('Z', dispatch_len);
 }
 
 void

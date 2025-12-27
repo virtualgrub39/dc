@@ -56,7 +56,7 @@ typedef struct
 cell cell_strv (dc_strv_t strv);
 cell cell_string (const char *str);
 cell cell_number (const dc_num_t num);
-void cell_display (FILE *f, const cell *c);
+void cell_display (FILE *f, const cell *c, size_t prec);
 void cell_clear (cell *c);
 cell cell_clone (const cell *c);
 
@@ -72,7 +72,7 @@ bool popn (stack *s, cell *c, size_t n);
 const cell *peek (stack *s);
 void stack_set (stack *s, cell c);
 void stack_free (stack *s);
-void stack_dump (const stack *s);
+void stack_dump (const stack *s, size_t prec);
 
 #define REG_COUNT 128
 typedef struct
@@ -81,6 +81,7 @@ typedef struct
     lexer l;
     stack r[REG_COUNT];
     int exec_level;
+    size_t prec;
 } execution_ctx;
 
 typedef void (*command_cb) (execution_ctx *, void *);
